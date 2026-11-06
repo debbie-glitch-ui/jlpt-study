@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>JLPT Study</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{--bg:#faf8ff;--card:#fff;--tx:#241b3a;--mu:#6d6585;--ac:#6b46c1;--ac2:#ede7fb;--ok:#2f9e6b;--bad:#d1495b;--bd:#e3dcf3;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#15111f;--card:#1f1930;--tx:#ece7fa;--mu:#a399bf;--ac:#a98bf0;--ac2:#2b2342;--bd:#352c4f}color-scheme:dark}
+:root[data-theme=dark]{--bg:#15111f;--card:#1f1930;--tx:#ece7fa;--mu:#a399bf;--ac:#a98bf0;--ac2:#2b2342;--bd:#352c4f;color-scheme:dark}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,"Hiragino Sans","Noto Sans JP",sans-serif}
+main{max-width:760px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0}header{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px}
+nav{display:flex;gap:6px;margin-bottom:14px;overflow-x:auto}
+button,.btn{font:inherit;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:10px;padding:8px 14px;cursor:pointer}
+button.on,button.pri{background:var(--ac);color:#fff;border-color:var(--ac)}button:disabled{opacity:.5}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.stat b{display:block;font-size:26px;color:var(--ac)}.stat span,.mu{color:var(--mu);font-size:14px}
+.big{font-size:48px;text-align:center;margin:12px 0}.row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+textarea,input[type=text]{width:100%;font:inherit;background:var(--bg);color:var(--tx);border:1px solid var(--bd);border-radius:10px;padding:10px}
+textarea{min-height:140px}.ex{border-left:3px solid var(--ac);padding:4px 10px;margin:8px 0;background:var(--ac2);border-radius:0 8px 8px 0}
+.ex .j{font-size:17px}.ex .e{color:var(--mu);font-size:14px}
+.bars{display:flex;align-items:flex-end;gap:6px;height:110px}.bars div{flex:1;text-align:center;font-size:11px;color:var(--mu)}
+.bars i{display:block;background:var(--ac);border-radius:4px 4px 0 0;min-height:2px;margin-bottom:2px}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:6px;border-bottom:1px solid var(--bd);text-align:left}
+.tbl{overflow-x:auto}.pill{font-size:12px;padding:1px 8px;border-radius:99px;background:var(--ac2);color:var(--ac)}
+.sh{font-weight:600;margin:18px 0 6px;color:var(--ac)}
+.ex{display:flex;gap:12px;border:1px solid var(--bd);border-left:4px solid var(--ac);border-radius:10px;padding:12px;margin:10px 0;background:var(--card)}
+.ex .n{flex:none;width:26px;height:26px;border-radius:50%;background:var(--ac);color:#fff;font-size:14px;display:flex;align-items:center;justify-content:center}
+.ex .j{font-size:22px;line-height:1.6}.ex .j mark{background:var(--ac2);color:var(--ac);border-radius:4px;padding:0 2px;font-weight:700}
+.ex .r{font-size:15px;opacity:.8;margin-top:2px}.ex .e{font-size:16px;color:var(--tx);margin-top:6px;padding-top:6px;border-top:1px dashed var(--bd)}
+.exp{margin:4px 0 10px;font-size:15px;opacity:.85}.ex>div:last-child{flex:1;min-width:0}
+</style></head><body><main>
+<header><h1>🎌 JLPT Study</h1><span class="mu" id="who"></span></header>
+<div id="banner" class="card mu" style="display:none"></div>
+<nav id="nav"></nav><div id="view"></div></main>
+<script>
+const LS='jlpt_state_v2',IV=[0,1,3,7,14,30],$=s=>document.querySelector(s);
+let loadErr='',S={deck:[],log:{},ex:{},books:[]},col=null,tab='today',cur=null,shown=false,busy=false,msg='';
+const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const addDays=n=>{const d=new Date();d.setDate(d.getDate()+n);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const hid=t=>{let h=5381;for(const c of t)h=((h<<5)+h+c.codePointAt(0))>>>0;return h.toString(36)};
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let t1=null;function saveCore(){refreshDay();clearTimeout(t1);t1=setTimeout(async()=>{try{if(col){await col.doc('deck').set({words:S.deck});await col.doc('log').set({log:S.log});await col.doc('books').set({list:S.books||[]})}else localStorage.setItem(LS,JSON.stringify(S))}catch(e){console.error(e);const b=$('#banner');b.style.display='block';b.textContent='Could not save: '+(e.message||e.code||e)}},400)}
+async function saveEx(id){try{if(col)await col.doc('x_'+id).set(S.ex[id]);else localStorage.setItem(LS,JSON.stringify(S))}catch(e){console.error(e)}}
+const key=()=>localStorage.getItem('jlpt_key')||'',model=()=>localStorage.getItem('jlpt_model')||'claude-haiku-5-5';
+async function init(){
+ try{const l=JSON.parse(localStorage.getItem(LS)||'null');if(l){S=l;S.deck=S.deck||[];S.log=S.log||{};S.ex=S.ex||{};S.books=S.books||[]}}catch(e){loadErr=String(e.message||e)}
+ $('#who').textContent='Saved in this browser';
+ const b=$('#banner');
+ if(loadErr){b.style.display='block';b.textContent='Could not read saved data: '+loadErr}
+ else if(!key()){b.style.display='block';b.textContent='Tip: open Settings and paste your Anthropic API key to get furigana, Greek meanings, levels and example sentences.'}
+ render()}
+function nav(){$('#nav').innerHTML=[['today','Study'],['books','Books'],['add','Add words'],['words','Word list'],['prog','Progress'],['settings','Settings']].map(([k,l])=>`<button class="${tab===k?'on':''}" onclick="go('${k}')">${l}</button>`).join('')}
+function go(k){practice=false;tab=k;cur=null;shown=false;msg='';render()}
+function render(){dayDel=0;dest=null;nav();({today:vToday,books:vBooks,add:vAdd,words:vWords,prog:vProg,settings:vSettings})[tab]()}
+function dueList(){const t=today();return S.deck.filter(w=>(w.box===0||w.due<=t)&&inScope(w))}
+function vToday(){if(practice)return vPractice();const L=S.log[today()]||{learned:0,reviewed:0},due=dueList();
+ let h=`<div class="grid"><div class="card stat"><b>${L.learned}</b><span>new words today</span></div><div class="card stat"><b>${L.reviewed}</b><span>reviews today</span></div><div class="card stat"><b>${due.length}</b><span>cards waiting</span></div></div>${sfBanner()}<p class="mu">Level: ${lvSel()}</p>${seenN()?`<p><button onclick="startPractice()">🔁 Practice today's words (${seenN()})</button></p>`:''}`;
+ if(!S.deck.length)h+=`<div class="card">No words yet. Go to <b>Add words</b> and paste or upload your N2/N1 list.</div>`;
+ else if(!due.length)h+=`<div class="card">🎉 Nothing due right now. Add more words or come back tomorrow.</div>`;
+ else{if(!cur||!S.deck.includes(cur))cur=due[0];const w=cur,x=S.ex[w.id];
+  h+=`<div class="card"><div class="mu">${w.box===0?'NEW':'Review'} · ${esc(w.level||'')}</div><div class="big">${shown?ruby(w):esc(w.term)}</div>`;
+  if(!shown)h+=`<div class="row"><button class="pri" onclick="reveal()">Show answer (Enter ↵)</button></div>`;
+  else{h+=`<div style="text-align:center"><b>${esc(w.el||x?.meaning_el||w.meaning||'')}</b></div>`+exHtml(x,w.term);
+   h+=`<div class="row" style="margin-top:14px"><button onclick="rate(false)" style="border-color:var(--bad)">Again</button><button class="pri" onclick="rate(true)">I knew it</button></div>`}
+  h+=`</div>`}
+ $('#view').innerHTML=h}
+let practice=false,plist=[],pi=0;
+const seenN=()=>S.deck.filter(w=>w.seen===today()&&inScope(w)).length;
+function startPractice(){plist=S.deck.filter(w=>w.seen===today()&&inScope(w)).sort(()=>Math.random()-.5);pi=0;practice=true;cur=null;shown=false;msg='';render()}
+function stopPractice(){practice=false;cur=null;shown=false;render()}
+function pnext(){pi++;if(pi>=plist.length){plist=plist.slice().sort(()=>Math.random()-.5);pi=0}cur=null;shown=false;msg='';render()}
+function vPractice(){if(!plist.length){practice=false;return vToday()}
+ if(!cur||!plist.includes(cur))cur=plist[pi%plist.length];const w=cur,x=S.ex[w.id];
+ let h=`<div class="card"><b>🔁 Practice mode</b> <span class="mu">· ${pi+1}/${plist.length} · your progress and daily counts are not changed</span><p><button onclick="stopPractice()">← Back to today's review</button></p></div><div class="card"><div class="big">${shown?ruby(w):esc(w.term)}</div>`;
+ if(!shown)h+=`<div class="row"><button class="pri" onclick="reveal()">Show answer (Enter ↵)</button></div>`;
+ else h+=`<div style="text-align:center"><b>${esc(w.el||x?.meaning_el||w.meaning||'')}</b></div>`+exHtml(x,w.term)+`<div class="row" style="margin-top:14px"><button class="pri" onclick="pnext()">Next word ▶ (Enter ↵)</button></div>`;
+ $('#view').innerHTML=h+'</div>'}
+const hl=(t,w)=>{t=esc(t);return w?t.split(esc(w)).join('<mark>'+esc(w)+'</mark>'):t};
+function exHtml(x,term){if(busy)return`<p class="mu" style="text-align:center">Asking Claude for explanations…</p>`;
+ if(!x)return`<p class="mu" style="text-align:center">${esc(msg)||'No explanation yet.'}</p>`;
+ return`<div class="card" style="background:var(--ac2)"><b>🇬🇷</b> ${esc(x.meaning_el)}<div class="exp">${esc(x.explain_el)}</div><hr style="border:0;border-top:1px solid var(--bd)"><b>🇯🇵</b> ${esc(x.meaning_ja)}<div class="exp">${esc(x.explain_ja)}</div></div>`+'<div class="sh">例文 · Παραδείγματα</div>'+(x.sentences||[]).map((s,i)=>`<div class="ex"><div class="n">${i+1}</div><div><div class="j">${hl(s.ja,term)}</div><div class="r">${esc(s.reading||'')}</div><div class="e">🇬🇷 ${esc(s.el)}</div></div></div>`).join('')}
+async function gen(w){if(S.ex[w.id]||busy)return;busy=true;msg='';render();
+ try{if(col){const s=await col.doc('x_'+w.id).get();if(s.exists){S.ex[w.id]=JSON.parse(JSON.stringify(s.data()));busy=false;render();return}}
+  if(!key())throw new Error('Add your API key in Settings first.');
+  const x=await aj(`You are a Japanese teacher for Greek-speaking JLPT learners. Explain the Japanese word/kanji "${w.term}"${w.reading?` (reading: ${w.reading})`:''}${w.meaning?` (hint: ${w.meaning})`:''}. Reply with ONLY JSON, no markdown: {"reading":"hiragana","meaning_el":"short Greek meaning","explain_el":"1-2 sentence Greek explanation incl. nuance/usage","meaning_ja":"Japanese definition","explain_ja":"1-2 sentence Japanese explanation","sentences":[exactly 5 objects {"ja":"natural sentence using the word in different contexts","reading":"full hiragana reading","el":"Greek translation"}]}`);
+  S.ex[w.id]=x;await saveEx(w.id)}catch(e){msg='Could not generate: '+(e.message||e.code||'error')}
+ busy=false;render()}
+async function reveal(){shown=true;render();await gen(cur)}
+function rate(ok){const w=cur,t=today(),L=S.log[t]=S.log[t]||{learned:0,reviewed:0};
+ if(ok){if(w.box===0)L.learned++;else L.reviewed++;w.box=Math.min(w.box+1,5);w.due=addDays(IV[w.box])}
+ else{if(w.box>0)L.reviewed++;w.box=w.box===0?0:1;w.due=t;if(w.box===1)w.due=addDays(0)}
+ w.seen=t;cur=null;shown=false;saveCore();render()}
+function vAdd(){$('#view').innerHTML=`<div class="card"><b>Paste words</b><p class="mu">One per line: <code>word, reading, meaning</code> (reading/meaning optional; comma, tab or semicolon). Pasting from Excel works too.</p><textarea id="ta" placeholder="曖昧, あいまい, ambiguous&#10;妨げる&#10;顕著"></textarea>
+<p>Level: <select id="lv"><option value="">Auto-detect</option><option>N5</option><option>N4</option><option>N3</option><option>N2</option><option>N1</option></select> <button class="pri" onclick="addPaste()">Add words</button></p><p id="pmsg" class="mu"></p></div>
+<div class="card"><b>Upload CSV / Excel</b><p class="mu">First columns: word, reading, meaning, level. A header row is detected automatically.</p><input type="file" id="fi" accept=".csv,.tsv,.txt,.xlsx,.xls" onchange="addFile(this.files[0])"><p id="imsg" class="mu"></p></div>`}
+function parseCSV(t){const R=[];let r=[],f='',q=false;const d=t.includes('\t')?'\t':(t.split(';').length>t.split(',').length?';':',');
+ for(let i=0;i<t.length;i++){const c=t[i];if(q){if(c=='"'){if(t[i+1]=='"'){f+='"';i++}else q=false}else f+=c}
+  else if(c=='"')q=true;else if(c==d){r.push(f);f=''}else if(c=='\n'||c=='\r'){if(c=='\r'&&t[i+1]=='\n')i++;r.push(f);f='';R.push(r);r=[]}else f+=c}
+ r.push(f);R.push(r);return R}
+function ingest(rows,lv,el){let n=0,dup=0,added=[];if(rows.length&&/^(word|term|kanji|vocab|単語|λέξη)/i.test((rows[0][0]||'').trim()))rows=rows.slice(1);
+ for(const r of rows){const term=(r[0]||'').trim();if(!term)continue;const id=hid(term);const ex0=S.deck.find(w=>w.id===id);if(ex0){if(dest&&!ex0.book){Object.assign(ex0,dest);n++}else dup++;continue}
+  S.deck.push({id,term,reading:(r[1]||'').trim(),meaning:(r[2]||'').trim(),level:nl(r[3])||lv,box:0,due:today(),...(dest||{})});added.push(S.deck[S.deck.length-1]);n++}
+ saveCore();el.textContent=`Added ${n} new words${dup?` (${dup} duplicates skipped)`:''}.`;enrich(added,el)}
+let dest=null,bk={book:null,week:null,day:null},sf=null,delArm='';
+const inScope=w=>(!lvf||w.level===lvf)&&(!sf||(w.book===sf.book&&(sf.week==null||w.week===sf.week)&&(sf.day==null||w.day===sf.day)));
+const BK=()=>(S.books||[]).find(b=>b.id===bk.book),cnt=f=>S.deck.filter(f).length;
+function sfBanner(){if(!sf)return'';const b=(S.books||[]).find(x=>x.id===sf.book);return`<p class="card" style="padding:10px">📖 Studying: <b>${esc(b?b.name:'')}</b>${sf.week!=null?' · Week '+sf.week:''}${sf.day!=null?' · Day '+sf.day:''} <button onclick="sf=null;cur=null;shown=false;render()">Study everything</button></p>`}
+function studyScope(week,day){sf={book:bk.book,week,day};go('today')}
+function mkBook(){const name=$('#bn').value.trim(),weeks=Math.max(1,Math.min(52,+$('#bw').value||8));if(!name)return;S.books=S.books||[];S.books.push({id:hid(name+Date.now()),name,weeks});saveCore();render()}
+function delBook(id){if(delArm!==id){delArm=id;render();return}S.books=S.books.filter(b=>b.id!==id);S.deck.forEach(w=>{if(w.book===id){delete w.book;delete w.week;delete w.day}});delArm='';if(sf&&sf.book===id)sf=null;saveCore();render()}
+function openBook(id){bk={book:id,week:null,day:null};render()}
+function openDay(w,d){bk.week=w;bk.day=d;render()}
+function addWeek(){BK().weeks++;saveCore();render()}
+function delDay(id){S.deck=S.deck.filter(w=>w.id!==id);saveCore()}
+function dayTable(){const L=S.deck.filter(w=>dest&&w.book===dest.book&&w.week===dest.week&&w.day===dest.day);return L.length?`<div class="tbl"><table>${L.map(w=>`<tr><td>${ruby(w)}</td><td>${esc(w.el||w.meaning)}</td><td><span class="pill">${esc(w.level||'…')}</span></td><td><button onclick="delDay('${w.id}')">✕</button></td></tr>`).join('')}</table></div>`:'<p class="mu">No words in this day yet.</p>'}
+function refreshDay(){const d=document.getElementById('dl');if(d&&dest)d.innerHTML=dayTable();renderDD()}
+let dayDel=0;
+function renderDD(){const e=document.getElementById('dd');if(!e||!dest)return;const n=S.deck.filter(w=>w.book===dest.book&&w.week===dest.week&&w.day===dest.day).length;
+ if(!n){e.innerHTML='';dayDel=0;return}
+ e.innerHTML=dayDel===0?`<button onclick="dayDel=1;renderDD()" style="border-color:var(--bad)">🗑 Delete all words in this day (${n})</button>`:dayDel===1?`<p><b>Are you sure?</b> This will delete all ${n} words from Week ${dest.week} · Day ${dest.day}.</p><button onclick="dayDel=2;renderDD()" style="border-color:var(--bad)">Yes, continue</button> <button onclick="dayDel=0;renderDD()">Cancel</button>`:`<p><b>Last check:</b> really delete all ${n} words? This cannot be undone.</p><button onclick="delAllDay()" style="background:var(--bad);color:#fff;border-color:var(--bad)">Yes, delete everything</button> <button onclick="dayDel=0;renderDD()">Cancel</button>`}
+function delAllDay(){const d=dest;if(!d)return;S.deck=S.deck.filter(w=>!(w.book===d.book&&w.week===d.week&&w.day===d.day));dayDel=0;saveCore()}
+function vBooks(){S.books=S.books||[];const b=BK();
+ if(!b){bk={book:null,week:null,day:null};
+  $('#view').innerHTML=`<div class="card"><b>Your books</b>${S.books.length?'':'<p class="mu">No books yet. Create one below, for example “Sou Matome N1 Kanji” with 8 weeks.</p>'}${S.books.map(x=>`<div class="ex" style="align-items:center"><div style="flex:1"><b>${esc(x.name)}</b><div class="mu">${x.weeks} weeks · ${cnt(w=>w.book===x.id)} words</div></div><button class="pri" onclick="openBook('${x.id}')">Open</button> <button onclick="delBook('${x.id}')">${delArm===x.id?'Click again to confirm':'Delete'}</button></div>`).join('')}</div><div class="card"><b>New book</b><p><input type="text" id="bn" placeholder="Book name, e.g. Sou Matome N1 Kanji"></p><p>Weeks: <input type="number" id="bw" value="8" min="1" max="52" style="width:80px;font:inherit;padding:8px;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--tx)"> <button class="pri" onclick="mkBook()">Create book</button></p><p class="mu">Each week has Day 1–7, and you add words to each day.</p></div>`;return}
+ if(bk.day==null){
+  let h=`<div class="card"><button onclick="bk.book=null;render()">← All books</button> <b style="margin-left:8px">${esc(b.name)}</b> <button class="pri" style="float:right" onclick="studyScope(null,null)">Study whole book (${cnt(w=>w.book===b.id)})</button></div>`;
+  for(let wk=1;wk<=b.weeks;wk++){const n=cnt(w=>w.book===b.id&&w.week===wk);
+   h+=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><b>Week ${wk}</b><span class="mu">${n} words ${n?`<button onclick="studyScope(${wk},null)">Study week</button>`:''}</span></div><div class="row" style="margin-top:10px;justify-content:flex-start">${[1,2,3,4,5,6,7].map(d=>{const c=cnt(w=>w.book===b.id&&w.week===wk&&w.day===d);return`<button class="${c?'on':''}" onclick="openDay(${wk},${d})">Day ${d}<br><small>${c} words</small></button>`}).join('')}</div></div>`}
+  $('#view').innerHTML=h+`<p><button onclick="addWeek()">+ Add a week</button></p>`;return}
+ dest={book:b.id,week:bk.week,day:bk.day};
+ $('#view').innerHTML=`<div class="card"><button onclick="bk.day=null;render()">← ${esc(b.name)}</button> <b style="margin-left:8px">Week ${bk.week} · Day ${bk.day}</b> <button class="pri" style="float:right" onclick="studyScope(${bk.week},${bk.day})">Study this day</button></div><div class="card"><b>Add words to this day</b><p class="mu">One per line: word, reading, meaning (reading and meaning optional). Furigana, Greek meaning and level are filled in automatically.</p><textarea id="ta" placeholder="曖昧&#10;妨げる&#10;顕著"></textarea><p>Level: <select id="lv"><option value="">Auto-detect</option><option>N5</option><option>N4</option><option>N3</option><option>N2</option><option>N1</option></select> <button class="pri" onclick="addPaste()">Add words</button></p><p id="pmsg" class="mu"></p><p>Or upload CSV / Excel: <input type="file" id="fi" accept=".csv,.tsv,.txt,.xlsx,.xls" onchange="addFile(this.files[0])"></p><p id="imsg" class="mu"></p></div><div class="card"><b>Words in this day</b><div id="dd" style="margin:8px 0"></div><div id="dl"></div></div>`;refreshDay()}
+const nl=s=>{const m=String(s||'').toUpperCase().match(/N?([1-5])/);return m?'N'+m[1]:''};
+let lvf='';const lvSel=()=>`<select onchange="lvf=this.value;cur=null;shown=false;render()"><option value="">All</option>${['N5','N4','N3','N2','N1'].map(l=>`<option${lvf===l?' selected':''}>${l}</option>`).join('')}</select>`;
+const aj=async p=>{const k=key();if(!k)throw new Error('No API key. Open Settings and paste your Anthropic API key.');
+ const c=new AbortController(),tm=setTimeout(()=>c.abort(),90000);
+ try{const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:c.signal,headers:{'content-type':'application/json','x-api-key':k,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:model(),max_tokens:3000,messages:[{role:'user',content:p}]})});
+  const d=await r.json();if(!r.ok)throw new Error((d.error&&d.error.message)||('HTTP '+r.status));
+  const t=(d.content||[]).map(x=>x.text||'').join(''),m=t.match(/[\[{][\s\S]*[\]}]/);if(!m)throw new Error('Unexpected reply from Claude');return JSON.parse(m[0])}
+ catch(e){if(e.name==='AbortError')throw new Error('timed out');throw e}finally{clearTimeout(tm)}};
+function vSettings(){$('#view').innerHTML=`<div class="card"><b>Claude API key</b><p class="mu">Used for furigana, Greek meanings, levels and example sentences. It is stored only in this browser and sent only to Anthropic. Usage is billed to your Anthropic API account.</p><input type="password" id="ak" placeholder="sk-ant-..." value="${esc(key())}"><p>Model: <select id="am"><option value="claude-haiku-5-5">Haiku 5.5 (cheaper, faster)</option><option value="claude-sonnet-5-5">Sonnet 5.5 (better quality)</option></select> <button class="pri" onclick="saveKey()">Save</button> <button onclick="testKey()">Test</button></p><p id="km" class="mu"></p></div>
+<div class="card"><b>Backup</b><p class="mu">Your data lives only in this browser. Export a backup file regularly, and import it to move to another browser or device.</p><p><button onclick="exportData()">Export backup</button> <input type="file" id="bf" accept=".json" onchange="importData(this.files[0])"></p><p id="bm" class="mu"></p><p class="mu">Storage used: ${Math.round(JSON.stringify(S).length/1024)} KB (browser limit is roughly 5 MB)</p></div>`;$('#am').value=model()}
+function saveKey(){localStorage.setItem('jlpt_key',$('#ak').value.trim());localStorage.setItem('jlpt_model',$('#am').value);$('#km').textContent='Saved.';if(key())$('#banner').style.display='none'}
+async function testKey(){saveKey();const m=$('#km');m.textContent='Testing...';try{await aj('Reply with only this JSON: {"ok":true}');m.textContent='\u2713 Key works.'}catch(e){m.textContent='\u2717 '+e.message}}
+function exportData(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S)],{type:'application/json'}));a.download='jlpt-backup-'+today()+'.json';a.click()}
+async function importData(f){if(!f)return;const m=$('#bm');try{const d=JSON.parse(await f.text());if(!Array.isArray(d.deck))throw new Error('not a backup file');S={deck:d.deck,log:d.log||{},ex:d.ex||{},books:d.books||[]};localStorage.setItem(LS,JSON.stringify(S));m.textContent='Imported '+S.deck.length+' words.'}catch(e){m.textContent='Could not import: '+e.message}}
+const ruby=w=>w.reading?`<ruby>${esc(w.term)}<rt>${esc(w.reading)}</rt></ruby>`:esc(w.term);
+async function enrich(ws,el){ws=ws.filter(w=>!w.reading||!w.el||!w.level);if(!ws.length)return;const base=el.textContent;if(!key()){el.textContent=base+' Add your API key in Settings to get furigana, Greek meanings and levels automatically.';return}
+ let done=0;for(let i=0;i<ws.length;i+=15){const ch=ws.slice(i,i+15);el.textContent=`${base} Adding furigana and Greek meanings… ${done}/${ws.length}`;
+  try{const r=await aj(`For each Japanese word/kanji below give the hiragana reading (furigana), a short, accurate Greek meaning (1-5 words; use the hint if given) and the JLPT level (N5, N4, N3, N2 or N1) at which this word is normally learned. Reply with ONLY a JSON array in the same order and same length, no markdown: [{"reading":"hiragana","el":"Greek meaning","level":"N3"}]. Words: ${JSON.stringify(ch.map(w=>({term:w.term,hint:w.meaning||''})))}`);
+   ch.forEach((w,j)=>{const x=r[j];if(!x)return;if(!w.reading&&x.reading)w.reading=x.reading;if(x.el)w.el=x.el;if(!w.level&&/^N[1-5]$/.test(x.level))w.level=x.level});done+=ch.length;saveCore()}
+  catch(e){saveCore();el.textContent=`${base} Stopped at ${done}/${ws.length}: ${e.message||e.code||'error'}. Use “Fill missing” in the Word list to continue.`;return}}
+ el.textContent=`${base} Furigana and Greek meanings added ✓`}
+function fillMissing(){const el=document.getElementById('fm');enrich(S.deck,el).then(()=>{if(tab==='words')vWords()})}
+function addPaste(){const st=document.getElementById('pmsg');try{const t=$('#ta').value;if(!t.trim()){st.textContent='Paste some words first.';return}const rows=parseCSV(t).filter(r=>r.some(c=>c.trim()));st.textContent='Adding…';ingest(rows,$('#lv').value,st);$('#ta').value=''}catch(e){st.textContent='Error: '+(e.message||e)}}
+async function addFile(f){if(!f)return;const el=$('#imsg'),lv=$('#lv')?$('#lv').value:'';el.textContent='Reading…';
+ try{if(/\.xlsx?$/i.test(f.name)){await new Promise((ok,no)=>{if(window.XLSX)return ok();const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.onload=ok;s.onerror=no;document.head.appendChild(s)});
+   const wb=XLSX.read(await f.arrayBuffer());const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});ingest(rows.map(r=>r.map(String)),lv,el)}
+  else ingest(parseCSV(await f.text()).filter(r=>r.some(c=>c.trim())),lv,el)}catch(e){el.textContent='Could not read that file. Try saving it as CSV.'}}
+function vWords(){const q=(window._q||'').toLowerCase();const L=S.deck.filter(w=>(w.term+w.reading+w.meaning).toLowerCase().includes(q)&&(!lvf||w.level===lvf));
+ $('#view').innerHTML=`<div class="card"><input type="text" id="sq" placeholder="Search ${S.deck.length} words" value="${esc(window._q||'')}" oninput="window._q=this.value;vWords();document.getElementById('sq').focus()"><p class="mu">Level: ${lvSel()}</p><p><button onclick="fillMissing()">Fill missing furigana / Greek / level</button> <span id="fm" class="mu"></span></p><div class="tbl"><table><tr><th>Word</th><th>Reading</th><th>Meaning</th><th>Level</th><th></th></tr>${L.slice(0,200).map(w=>`<tr><td>${ruby(w)}</td><td>${esc(w.reading)}</td><td>${esc(w.el||w.meaning)}</td><td><span class="pill">${esc(w.level||'…')}</span></td><td><button onclick="del('${w.id}')">✕</button></td></tr>`).join('')}</table></div></div>`}
+function del(id){S.deck=S.deck.filter(w=>w.id!==id);saveCore();vWords()}
+function vProg(){const days=[];for(let i=13;i>=0;i--)days.push(addDays(-i));const v=days.map(d=>(S.log[d]||{}).learned||0),mx=Math.max(1,...v);
+ let st=0;for(let i=0;;i++){const d=addDays(-i),L=S.log[d];if(L&&(L.learned||L.reviewed))st++;else if(i>0)break;else if(i===0)continue;}
+ const tot=Object.values(S.log).reduce((a,l)=>a+l.learned,0),k=S.deck.filter(w=>w.box>=3).length;
+ $('#view').innerHTML=`<div class="grid"><div class="card stat"><b>${tot}</b><span>words learned total</span></div><div class="card stat"><b>${st}</b><span>day streak</span></div><div class="card stat"><b>${k}</b><span>well known (box 3+)</span></div><div class="card stat"><b>${S.deck.length}</b><span>words in deck</span></div></div>
+<div class="card"><b>New words per day (last 14 days)</b><div class="bars" style="margin-top:10px">${days.map((d,i)=>`<div><i style="height:${v[i]/mx*80}px"></i>${v[i]}<br>${d.slice(8)}</div>`).join('')}</div></div>`}
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&practice&&shown&&!busy&&!/TEXTAREA|INPUT|BUTTON|SELECT/.test((document.activeElement||{}).tagName||'')){e.preventDefault();pnext();return}if(e.key==='Enter'&&tab==='today'&&cur&&!shown&&!busy&&!/TEXTAREA|INPUT|BUTTON|SELECT/.test((document.activeElement||{}).tagName||'')){e.preventDefault();reveal()}});
+init();
+</script></body></html>
